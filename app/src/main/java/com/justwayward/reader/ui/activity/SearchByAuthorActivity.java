@@ -53,7 +53,7 @@ public class SearchByAuthorActivity extends BaseRVActivity<SearchDetail.SearchBo
 
     @Override
     public int getLayoutId() {
-        return R.layout.activity_search_by_author;
+        return R.layout.activity_common_recyclerview;
     }
 
     @Override
@@ -106,5 +106,13 @@ public class SearchByAuthorActivity extends BaseRVActivity<SearchDetail.SearchBo
     @Override
     public void complete() {
         mRecyclerView.setRefreshing(false);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mPresenter != null) {
+            mPresenter.detachView();
+        }
     }
 }

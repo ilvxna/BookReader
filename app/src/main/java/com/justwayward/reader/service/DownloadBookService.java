@@ -27,7 +27,7 @@ import com.justwayward.reader.ReaderApplication;
 import com.justwayward.reader.api.BookApi;
 import com.justwayward.reader.api.support.Logger;
 import com.justwayward.reader.api.support.LoggingInterceptor;
-import com.justwayward.reader.bean.BookToc;
+import com.justwayward.reader.bean.BookMixAToc;
 import com.justwayward.reader.bean.ChapterRead;
 import com.justwayward.reader.bean.support.DownloadMessage;
 import com.justwayward.reader.bean.support.DownloadProgress;
@@ -45,8 +45,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import rx.Observer;
+import rx.Subscription;
 import rx.android.schedulers.AndroidSchedulers;
 import rx.schedulers.Schedulers;
+import rx.subscriptions.CompositeSubscription;
 
 /**
  * @author yuyh.
@@ -57,6 +59,7 @@ public class DownloadBookService extends Service {
     public static List<DownloadQueue> downloadQueues = new ArrayList<>();
 
     public BookApi bookApi;
+    protected CompositeSubscription mCompositeSubscription;
 
     public boolean isBusy = false; // 当前是否有下载任务在进行
 
@@ -79,13 +82,13 @@ public class DownloadBookService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-
         return super.onStartCommand(intent, flags, startId);
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
+        unSubscribe();
         EventBus.getDefault().unregister(this);
     }
 
@@ -93,12 +96,12 @@ public class DownloadBookService extends Service {
         EventBus.getDefault().post(downloadQueue);
     }
 
-    public static void post(DownloadProgress progress) {
+    public void post(DownloadProgress progress) {
         EventBus.getDefault().post(progress);
     }
 
-    private void post(DownloadMessage complete) {
-        EventBus.getDefault().post(complete);
+    private void post(DownloadMessage message) {
+        EventBus.getDefault().post(message);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -133,7 +136,7 @@ public class DownloadBookService extends Service {
     public synchronized void downloadBook(final DownloadQueue downloadQueue) {
         AsyncTask<Integer, Integer, Integer> downloadTask = new AsyncTask<Integer, Integer, Integer>() {
 
-            List<BookToc.mixToc.Chapters> list = downloadQueue.list;
+            List<BookMixAToc.mixToc.Chapters> list = downloadQueue.list;
             String bookId = downloadQueue.bookId;
             int start = downloadQueue.start; // 起始章节
             int end = downloadQueue.end; // 结束章节
@@ -159,7 +162,7 @@ public class DownloadBookService extends Service {
                     if (!downloadQueue.isFinish && !downloadQueue.isCancel) {
                         // 章节文件不存在,则下载，否则跳过
                         if (CacheManager.getInstance().getChapterFile(bookId, i) == null) {
-                            BookToc.mixToc.Chapters chapters = list.get(i - 1);
+                            BookMixAToc.mixToc.Chapters chapters = list.get(i - 1);
                             String url = chapters.link;
                             int ret = download(url, bookId, chapters.title, i, list.size());
                             if (ret != 1) {
@@ -210,7 +213,8 @@ public class DownloadBookService extends Service {
 
         final int[] result = {-1};
 
-        bookApi.getChapterRead(url).subscribeOn(Schedulers.io())
+        Subscription subscription = bookApi.getChapterRead(url)
+                .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(new Observer<ChapterRead>() {
                     @Override
@@ -237,6 +241,8 @@ public class DownloadBookService extends Service {
                     }
                 });
 
+        addSubscrebe(subscription);
+
         while (result[0] == -1) {
             try {
                 Thread.sleep(350);
@@ -249,5 +255,18 @@ public class DownloadBookService extends Service {
 
     public static void cancel() {
         canceled = true;
+    }
+
+    protected void unSubscribe() {
+        if (mCompositeSubscription != null) {
+            mCompositeSubscription.unsubscribe();
+        }
+    }
+
+    protected void addSubscrebe(Subscription subscription) {
+        if (mCompositeSubscription == null) {
+            mCompositeSubscription = new CompositeSubscription();
+        }
+        mCompositeSubscription.add(subscription);
     }
 }

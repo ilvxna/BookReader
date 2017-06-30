@@ -27,7 +27,7 @@ import android.view.View;
 import android.widget.ProgressBar;
 
 import com.justwayward.reader.R;
-import com.justwayward.reader.bean.BookToc;
+import com.justwayward.reader.bean.BookMixAToc;
 import com.justwayward.reader.manager.SettingManager;
 import com.justwayward.reader.utils.AppUtils;
 import com.justwayward.reader.utils.FileUtils;
@@ -83,7 +83,7 @@ public class PageFactory {
     /**
      * 页首页尾的位置
      */
-    private int curEndPos = 0, curBeginPos = 0, tempBeginPos;
+    private int curEndPos = 0, curBeginPos = 0, tempBeginPos, tempEndPos;
     private int currentChapter, tempChapter;
     private Vector<String> mLines = new Vector<>();
 
@@ -101,14 +101,14 @@ public class PageFactory {
     private Bitmap batteryBitmap;
 
     private String bookId;
-    private List<BookToc.mixToc.Chapters> chaptersList;
+    private List<BookMixAToc.mixToc.Chapters> chaptersList;
     private int chapterSize = 0;
     private int currentPage = 1;
 
     private OnReadStateChangeListener listener;
     private String charset = "UTF-8";
 
-    public PageFactory(Context context, String bookId, List<BookToc.mixToc.Chapters> chaptersList) {
+    public PageFactory(Context context, String bookId, List<BookMixAToc.mixToc.Chapters> chaptersList) {
         this(context, ScreenUtils.getScreenWidth(), ScreenUtils.getScreenHeight(),
                 //SettingManager.getInstance().getReadFontSize(bookId),
                 SettingManager.getInstance().getReadFontSize(),
@@ -116,7 +116,7 @@ public class PageFactory {
     }
 
     public PageFactory(Context context, int width, int height, int fontSize, String bookId,
-                       List<BookToc.mixToc.Chapters> chaptersList) {
+                       List<BookMixAToc.mixToc.Chapters> chaptersList) {
         mContext = context;
         mWidth = width;
         mHeight = height;
@@ -151,7 +151,10 @@ public class PageFactory {
 
     public File getBookFile(int chapter) {
         File file = FileUtils.getChapterFile(bookId, chapter);
-        charset = FileUtils.getCharset(file.getAbsolutePath());
+        if (file != null && file.length() > 10) {
+            // 解决空文件造成编码错误的问题
+            charset = FileUtils.getCharset(file.getAbsolutePath());
+        }
         LogUtils.i("charset=" + charset);
         return file;
     }
@@ -451,20 +454,24 @@ public class PageFactory {
         } else {
             tempChapter = currentChapter;
             tempBeginPos = curBeginPos;
+            tempEndPos = curEndPos;
             if (curEndPos >= mbBufferLen) { // 中间章节结束页
                 currentChapter++;
                 int ret = openBook(currentChapter, new int[]{0, 0}); // 打开下一章
                 if (ret == 0) {
                     onLoadChapterFailure(currentChapter);
                     currentChapter--;
+                    curBeginPos = tempBeginPos;
+                    curEndPos = tempEndPos;
                     return BookStatus.NEXT_CHAPTER_LOAD_FAILURE;
                 } else {
                     currentPage = 0;
                     onChapterChanged(currentChapter);
                 }
+            } else {
+                curBeginPos = curEndPos; // 起始指针移到结束位置
             }
             mLines.clear();
-            curBeginPos = curEndPos; // 起始指针移到结束位置
             mLines = pageDown(); // 读取一页内容
             onPageChanged(currentChapter, ++currentPage);
         }
@@ -481,6 +488,7 @@ public class PageFactory {
             // 保存当前页的值
             tempChapter = currentChapter;
             tempBeginPos = curBeginPos;
+            tempEndPos = curEndPos;
             if (curBeginPos <= 0) {
                 currentChapter--;
                 int ret = openBook(currentChapter, new int[]{0, 0});
@@ -589,17 +597,17 @@ public class PageFactory {
         this.listener = listener;
     }
 
-    void onChapterChanged(int chapter) {
+    private void onChapterChanged(int chapter) {
         if (listener != null)
             listener.onChapterChanged(chapter);
     }
 
-    void onPageChanged(int chapter, int page) {
+    private void onPageChanged(int chapter, int page) {
         if (listener != null)
             listener.onPageChanged(chapter, page);
     }
 
-    void onLoadChapterFailure(int chapter) {
+    private void onLoadChapterFailure(int chapter) {
         if (listener != null)
             listener.onLoadChapterFailure(chapter);
     }
@@ -615,7 +623,11 @@ public class PageFactory {
                 View.MeasureSpec.makeMeasureSpec(ScreenUtils.dpToPxInt(14), View.MeasureSpec.EXACTLY));
         batteryView.layout(0, 0, batteryView.getMeasuredWidth(), batteryView.getMeasuredHeight());
         batteryView.buildDrawingCache();
-        batteryBitmap = batteryView.getDrawingCache();
+        //batteryBitmap = batteryView.getDrawingCache();
+        // tips: @link{https://github.com/JustWayward/BookReader/issues/109}
+        batteryBitmap = Bitmap.createBitmap(batteryView.getDrawingCache());
+        batteryView.setDrawingCacheEnabled(false);
+        batteryView.destroyDrawingCache();
     }
 
     public void setBattery(int battery) {
@@ -625,5 +637,19 @@ public class PageFactory {
 
     public void setTime(String time) {
         this.time = time;
+    }
+
+    public void recycle() {
+        if (mBookPageBg != null && !mBookPageBg.isRecycled()) {
+            mBookPageBg.recycle();
+            mBookPageBg = null;
+            LogUtils.d("mBookPageBg recycle");
+        }
+
+        if (batteryBitmap != null && !batteryBitmap.isRecycled()) {
+            batteryBitmap.recycle();
+            batteryBitmap = null;
+            LogUtils.d("batteryBitmap recycle");
+        }
     }
 }

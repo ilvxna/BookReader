@@ -85,6 +85,8 @@ public class RxUtil {
                                     public void call() {
                                         LogUtils.d("get data from network finish ,start cache...");
                                         //通过反射获取List,再判空决定是否缓存
+                                        if (data == null)
+                                            return;
                                         Class clazz = data.getClass();
                                         Field[] fields = clazz.getFields();
                                         for (Field field : fields) {
@@ -94,7 +96,7 @@ public class RxUtil {
                                                 try {
                                                     List list = (List) field.get(data);
                                                     LogUtils.d("list==" + list);
-                                                    if (!list.isEmpty()) {
+                                                    if (list != null && !list.isEmpty()) {
                                                         ACache.get(ReaderApplication.getsInstance())
                                                                 .put(key, new Gson().toJson(data, clazz));
                                                         LogUtils.d("cache finish");
